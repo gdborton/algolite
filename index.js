@@ -222,6 +222,47 @@ const createServer = (options) => {
     })
   })
 
+  app.post('/1/indexes/:indexName/browse', async (req, res) => {
+    const start = Date.now()
+    const {
+      body,
+      params: { indexName }
+    } = req
+    if (!existIndex(indexName, path)) {
+      return res.status(400).end()
+    }
+    const { cursor } = body
+
+    const db = getIndex(indexName, path)
+    const pageSize = 1000
+    const parsedCursor = cursor ? parseInt(cursor, 10) : 0
+    const page = Math.floor(parsedCursor / pageSize)
+    // get ALL the data from the index then slice it as needed
+    const indexes = await db.INDEX.GET('')
+    const indexesToReturn = indexes.slice(parsedCursor, parsedCursor + pageSize)
+    const result = (await db.INDEX.OBJECT(indexesToReturn)).map((item) => {
+      const result = {
+        ...item['!doc']
+      }
+      result.objectID = item._id
+      delete result._id
+      return result
+    })
+    const end = parsedCursor + pageSize
+    const resu = {
+      hits: result,
+      page,
+      nbHits: indexes.length,
+      nbPages: Math.ceil(result.length / pageSize),
+      hitsPerPage: pageSize,
+      processingTimeMS: Date.now() - start,
+      query: '', // TODO: add query
+      params: '', // TODO: add params
+      cursor: end >= indexes.length ? undefined : String(end)
+    }
+    return res.status(200).json(resu)
+  })
+
   return app
 }
 
