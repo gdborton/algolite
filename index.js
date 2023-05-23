@@ -18,7 +18,7 @@ const createServer = (options) => {
     } = req
     const { params: queryParams } = body
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
 
     const { query, filters, facetFilters } = queryParams
       ? querystring.parse(queryParams)
@@ -44,10 +44,18 @@ const createServer = (options) => {
       )
     }
 
-    const result = await db.SEARCH(...searchExp)
+    const thing = db.QUERY(
+      {
+        SEARCH: searchExp
+      },
+      {
+        DOCUMENTS: true
+      }
+    )
+    const result = await thing
 
-    const hits = result.map((item) => {
-      const { obj } = item
+    const hits = result.RESULT.map((item) => {
+      const { _doc: obj } = item
       obj.objectID = obj._id
       delete obj._id
       return obj
@@ -61,13 +69,14 @@ const createServer = (options) => {
   })
 
   app.post('/1/indexes/:indexName', async (req, res) => {
+    console.log('post called')
     const {
       body,
       params: { indexName }
     } = req
     const _id = v4()
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     await db.PUT([
       {
         _id,
@@ -89,7 +98,6 @@ const createServer = (options) => {
     } = req
     const puts = []
     const deletes = []
-
     for (const request of body.requests) {
       switch (request.action) {
         case 'updateObject':
@@ -108,7 +116,7 @@ const createServer = (options) => {
       }
     }
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     if (puts.length) {
       await db.PUT(puts)
     }
@@ -129,7 +137,7 @@ const createServer = (options) => {
     } = req
     const { objectID } = req.params
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     try {
       await db.DELETE([objectID])
     } catch (error) {
@@ -155,7 +163,7 @@ const createServer = (options) => {
   app.delete('/1/indexes/:indexName/:objectID', async (req, res) => {
     const { objectID, indexName } = req.params
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     try {
       await db.DELETE([objectID])
     } catch (error) {
@@ -180,7 +188,7 @@ const createServer = (options) => {
 
     const { facetFilters } = querystring.parse(queryParams)
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
 
     const searchExp = []
     if (facetFilters) {
@@ -212,10 +220,8 @@ const createServer = (options) => {
       return res.status(400).end()
     }
 
-    const db = getIndex(indexName, path)
-    const result = await db.INDEX.GET('')
-    const ids = result.map((obj) => obj._id)
-    await db.INDEX.DELETE(ids)
+    const db = await getIndex(indexName, path)
+    await db.FLUSH()
 
     return res.status(200).json({
       taskID: 'algolite-task-id'
@@ -229,7 +235,8 @@ const createServer = (options) => {
       params: { indexName }
     } = req
     if (!existIndex(indexName, path)) {
-      return res.status(400).end()
+      console.log('sending 404')
+      return res.status(404).end()
     }
     const { cursor, attributesToRetrieve = [] } = body
     const attributeMap = attributesToRetrieve.reduce((acc, attr) => {
@@ -237,16 +244,18 @@ const createServer = (options) => {
       return acc
     }, {})
 
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     const pageSize = 1000
     const parsedCursor = cursor ? parseInt(cursor, 10) : 0
     const page = Math.floor(parsedCursor / pageSize)
     // get ALL the data from the index then slice it as needed
-    const indexes = await db.INDEX.GET('')
+    const indexes = (await db.ALL_DOCUMENTS()).sort((a, b) =>
+      a._id.localeCompare(b._id)
+    )
     const indexesToReturn = indexes.slice(parsedCursor, parsedCursor + pageSize)
-    const hits = (await db.INDEX.OBJECT(indexesToReturn)).map((item) => {
+    const hits = indexesToReturn.map((item) => {
       const result = {
-        ...item['!doc']
+        ...item._doc
       }
       if (attributesToRetrieve.length) {
         Object.keys(result).forEach((key) => {
@@ -280,11 +289,14 @@ const createServer = (options) => {
     if (!existIndex(indexName, path)) {
       return res.status(404).end()
     }
-    const db = getIndex(indexName, path)
+    const db = await getIndex(indexName, path)
     try {
-      const result = await db.INDEX.OBJECT([{ _id: req.params.objectId }])
+      const result = await db.DOCUMENTS([req.params.objectId])
+      if (!result.length) {
+        return res.status(404).end()
+      }
       const obj = {
-        ...result[0]['!doc']
+        ...result[0]
       }
       obj.objectID = result[0]._id
       delete obj._id

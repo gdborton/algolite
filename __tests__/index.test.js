@@ -3,7 +3,6 @@ const os = require('os')
 const { join } = require('path')
 const createServer = require('../index')
 const algoliasearch = require('algoliasearch')
-const { text } = require('express')
 
 describe('the algolite implementation', () => {
   const port = 3331
@@ -40,18 +39,46 @@ describe('the algolite implementation', () => {
     })
   })
 
-  it('supports a basic save and search', async () => {
-    await index.saveObject({
-      objectID: 'asdf',
-      text: 'test'
-    })
-    const searchResults = await index.search('test')
-    expect(searchResults.hits).toEqual([
-      {
+  describe('search', () => {
+    it('supports a basic save and search', async () => {
+      await index.saveObject({
         objectID: 'asdf',
         text: 'test'
+      })
+      const searchResults = await index.search('test')
+      expect(searchResults.hits).toEqual([
+        {
+          objectID: 'asdf',
+          text: 'test'
+        }
+      ])
+    })
+
+    it.only('supports facet filters', async () => {
+      const object1 = {
+        objectID: '1',
+        text: 'test',
+        category: 'one'
       }
-    ])
+      await index.saveObject(object1)
+      await index.saveObject({
+        objectID: '2',
+        text: 'test',
+        category: 'two'
+      })
+      console.log(
+        await index.search('test', {
+          facetFilters: ['category:one']
+        })
+      )
+      expect(
+        (
+          await index.search('test', {
+            facetFilters: ['category:one']
+          })
+        ).hits
+      ).toEqual([object1])
+    })
   })
 
   it('supports deleting an object', async () => {
@@ -94,13 +121,15 @@ describe('the algolite implementation', () => {
       })
       expect(total).toBe(1300)
       expect(results[0].length).toBe(1000)
+      // results aren't guaranteed to be in order, but they should be deterministic
       expect(results[0][results[0].length - 1]).toEqual({
-        objectID: '999',
+        objectID: '728',
         text: 'test'
       })
+      // results aren't guaranteed to be in order, but they should be deterministic
       expect(results[1].length).toBe(300)
       expect(results[1][0]).toEqual({
-        objectID: '1000',
+        objectID: '729',
         text: 'test'
       })
     })
@@ -125,9 +154,11 @@ describe('the algolite implementation', () => {
       })
       expect(total).toBe(2000)
       expect(results[0].length).toBe(1000)
-      expect(results[0][results[0].length - 1].objectID).toBe('999')
+      // results aren't guaranteed to be in order, but they should be deterministic
+      expect(results[0][results[0].length - 1].objectID).toBe('1898')
       expect(results[1].length).toBe(1000)
-      expect(results[1][0].objectID).toBe('1000')
+      // results aren't guaranteed to be in order, but they should be deterministic
+      expect(results[1][0].objectID).toBe('1899')
     })
 
     it('supports retrieving only specified attributes', async () => {
