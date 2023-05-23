@@ -231,7 +231,11 @@ const createServer = (options) => {
     if (!existIndex(indexName, path)) {
       return res.status(400).end()
     }
-    const { cursor } = body
+    const { cursor, attributesToRetrieve = [] } = body
+    const attributeMap = attributesToRetrieve.reduce((acc, attr) => {
+      acc[attr] = true
+      return acc
+    }, {})
 
     const db = getIndex(indexName, path)
     const pageSize = 1000
@@ -240,27 +244,33 @@ const createServer = (options) => {
     // get ALL the data from the index then slice it as needed
     const indexes = await db.INDEX.GET('')
     const indexesToReturn = indexes.slice(parsedCursor, parsedCursor + pageSize)
-    const result = (await db.INDEX.OBJECT(indexesToReturn)).map((item) => {
+    const hits = (await db.INDEX.OBJECT(indexesToReturn)).map((item) => {
       const result = {
         ...item['!doc']
+      }
+      if (attributesToRetrieve.length) {
+        Object.keys(result).forEach((key) => {
+          if (!attributeMap[key]) {
+            delete result[key]
+          }
+        })
       }
       result.objectID = item._id
       delete result._id
       return result
     })
     const end = parsedCursor + pageSize
-    const resu = {
-      hits: result,
+    return res.status(200).json({
+      hits,
       page,
       nbHits: indexes.length,
-      nbPages: Math.ceil(result.length / pageSize),
+      nbPages: Math.ceil(hits.length / pageSize),
       hitsPerPage: pageSize,
       processingTimeMS: Date.now() - start,
       query: '', // TODO: add query
       params: '', // TODO: add params
       cursor: end >= indexes.length ? undefined : String(end)
-    }
-    return res.status(200).json(resu)
+    })
   })
 
   // https://www.algolia.com/doc/rest-api/search/#get-object
