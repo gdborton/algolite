@@ -263,6 +263,27 @@ const createServer = (options) => {
     return res.status(200).json(resu)
   })
 
+  // https://www.algolia.com/doc/rest-api/search/#get-object
+  app.get('/1/indexes/:indexName/:objectId', async (req, res) => {
+    const { indexName } = req.params
+
+    if (!existIndex(indexName, path)) {
+      return res.status(404).end()
+    }
+    const db = getIndex(indexName, path)
+    try {
+      const result = await db.INDEX.OBJECT([{ _id: req.params.objectId }])
+      const obj = {
+        ...result[0]['!doc']
+      }
+      obj.objectID = result[0]._id
+      delete obj._id
+      return res.status(200).json(obj)
+    } catch (e) {
+      return res.status(404).end()
+    }
+  })
+
   return app
 }
 

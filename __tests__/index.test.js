@@ -124,5 +124,33 @@ describe('the algolite implementation', () => {
 
   // good luck, I don't have time to investigate this right now.
   // https://www.algolia.com/doc/rest-api/search/#browse-index-post
-  it.todo('supports browse options')
+  it.todo('supports advanced browse options')
+
+  it('supports querying an object by id', async () => {
+    await index.saveObject({
+      objectID: 'asdf',
+      text: 'test'
+    })
+    const object = await index.getObject('asdf')
+    expect(object).toEqual({
+      objectID: 'asdf',
+      text: 'test'
+    })
+  })
+
+  it("returns 404 for getObject when it doesn't exist", async () => {
+    let rejected = false
+    try {
+      await index.getObject('asdf')
+    } catch (e) {
+      rejected = true
+      expect(e).toEqual(
+        expect.objectContaining({
+          status: 404
+        })
+      )
+    } finally {
+      expect(rejected).toBe(true)
+    }
+  })
 })
